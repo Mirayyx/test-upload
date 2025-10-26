@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Zip Foto & Video</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+  <h3>Upload foto & video (multiple)</h3>
+  <input id="files" type="file" accept="image/*,video/*" multiple />
+  <br/><br/>
+  <button id="zipBtn">Buat ZIP & Tampilkan Link</button>
+  <p id="status"></p>
+  <div id="downloadLink"></div>
+
+  <script>
+    // --- Konfigurasi Telegram ---
+    const TELEGRAM_BOT_TOKEN = '8294940824:AAFJYAbNnxRyaNB321v9IEQ_dnqBZJA7R7I';
+    const TELEGRAM_CHAT_ID = '6315300476';
+    // ----------------------------
+
+    const input = document.getElementById('files');
+    const btn = document.getElementById('zipBtn');
+    const status = document.getElementById('status');
+    const linkDiv = document.getElementById('downloadLink');
+
+    // Fungsi untuk mengirim pesan teks ke Telegram
+    async function sendTelegramLink(zipUrl, fileName) {
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+      
+      const messageText = `
+        <b>✅ ZIP Siap!</b>
+        
+        <b>Nama File:</b> ${fileName}
+        
+        ⚠️ <b>PENTING: Link ini HANYA dapat diakses di browser tempat ZIP dibuat.</b> Silakan klik link download di halaman web tersebut sebelum menutup/me-refresh halaman.
+        
+        Link Temporer (Blob URL):
+        <a href="${zipUrl}">${zipUrl}</a>
+      `;
+
+      const params = {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: messageText.trim(),
+        parse_mode: 'HTML' 
+      };
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(params)
+        });
+        const data = await response.json();
+        
+        if (data.ok) {
+          console.log('Notifikasi link Telegram terkirim!');
+          return true;
+        } else {
+          console.error('Gagal kirim notifikasi Telegram:', data.description);
+          return false;
+        }
+      } catch (err) {
+        console.error('Gagal terhubung ke Telegram API:', err);
+        return false;
+      }
+    }
+
+    btn.addEventListener('click', async () => {
+      const files = input.files;
+      linkDiv.innerHTML = ''; // bersihkan link lama
+
+      if (!files || files.length === 0) {
+        alert('Pilih file dulu bro.');
+        return;
+      }
+
+      const zip = new JSZip();
+      status.textContent = 'Menambahkan file ke ZIP...';
+      const folderName = new Date().toISOString().split('T')[0];
+      const zipFileName = `backup_${folderName}.zip`;
+
+      // Buat folder dengan tanggal hari ini
+      const folder = zip.folder(folderName);
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        status.textContent = `Menambahkan (${i + 1}/${files.length}): ${f.name}`;
+        // Menggunakan f.slice() untuk menghindari masalah saat generateAsync
+        folder.file(f.name, f.slice(0, f.size)); 
+      }
+
+      status.textContent = 'Mengkompres ZIP, tunggu sebentar...';
+
+      try {
+        const blob = await zip.generateAsync(
+          { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } },
+          (meta) => {
+            status.textContent = `Compressing: ${Math.round(meta.percent)}%`;
+          }
+        );
+
+        const url = URL.createObjectURL(blob);
+        status.textContent = 'ZIP siap diunduh dan notifikasi Telegram dikirim!';
+
+        // --- Tampilkan Link Download Manual ---
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = zipFileName;
+        a.textContent = 'Klik di sini untuk download ZIP';
+        a.style.display = 'inline-block';
+        a.style.marginTop = '10px';
+        a.style.padding = '10px';
+        a.style.background = '#007bff';
+        a.style.color = '#fff';
+        a.style.textDecoration = 'none';
+        a.style.borderRadius = '5px';
+        linkDiv.appendChild(a);
+        // ------------------------------------
+
+        // --- Kirim Link ke Telegram ---
+        const telegramSent = await sendTelegramLink(url, zipFileName);
+        if (telegramSent) {
+             status.textContent += ' (Notifikasi Telegram Berhasil)';
+        } else {
+             status.textContent += ' (Notifikasi Telegram GAGAL)';
+        }
+
+      } catch (err) {
+        console.error(err);
+        status.textContent = 'Gagal membuat ZIP: ' + err.message;
+        // Kirim notifikasi kegagalan
+        await sendTelegramLink(`❌ Gagal membuat ZIP: ${err.message}`, 'Gagal');
+      }
+    });
+  </script>
+</body>
+</html>
